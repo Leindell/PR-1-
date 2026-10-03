@@ -1,0 +1,9 @@
+variant,format,codec,codec_applied,rows,gb,data_bytes,files,manifests,meta_bytes,meta_share_pct,ratio_vs_parquet_none,write_sec,write_mb_per_sec,cold_sec,warm_sec,cache_speedup
+lineitem_parquet_none,PARQUET,NONE,NONE,6001215,0.3473,372876013,8,1,9567,0.00257,1.0,34.858,10.2,7.853,4.53,1.73
+lineitem_parquet_snappy,PARQUET,SNAPPY,SNAPPY,6001215,0.1937,207999777,8,1,9565,0.0046,1.793,24.572,8.1,6.801,3.459,1.97
+lineitem_parquet_gzip,PARQUET,GZIP,GZIP,6001215,0.1403,150647535,8,1,9574,0.00636,2.475,33.127,4.3,6.192,3.269,1.89
+lineitem_parquet_zstd,PARQUET,ZSTD,ZSTD,6001215,0.1438,154435521,8,1,9561,0.00619,2.414,23.007,6.4,6.728,2.918,2.31
+lineitem_orc_none,ORC,NONE,NONE,6001215,0.4215,452628992,8,1,8974,0.00198,0.824,43.23,10.0,12.837,8.932,1.44
+lineitem_orc_snappy,ORC,SNAPPY,SNAPPY,6001215,0.2062,221446808,8,1,8994,0.00406,1.684,28.221,7.5,7.821,4.353,1.8
+lineitem_orc_gzip,ORC,GZIP,GZIP,6001215,0.1451,155838339,8,1,8961,0.00575,2.393,24.559,6.1,6.946,3.204,2.17
+lineitem_orc_zstd,ORC,ZSTD,ZSTD,6001215,0.1501,161184997,8,1,8947,0.00555,2.313,22.326,6.9,7.165,3.376,2.12

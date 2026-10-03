@@ -1,0 +1,6 @@
+# results.csv коммитим — это данные отчёта
+results*.json
+__pycache__/
+*.pyc
+jars/
+*.log
