@@ -63,8 +63,8 @@ for fmtname, color in (("PARQUET", PQ), ("ORC", ORC)):
     ax.plot(xs, ys, "o-", color=color, lw=2, ms=9, label=fmtname.title(),
             markeredgecolor=SURFACE, markeredgewidth=2)
     off = {"NONE": (8, 6), "SNAPPY": (8, 6),
-           "GZIP": (-6, -16) if fmtname == "PARQUET" else (6, 8),
-           "ZSTD": (10, -4) if fmtname == "PARQUET" else (-10, 10)}
+           "GZIP": (-6, -16) if fmtname == "PARQUET" else (-8, -16),
+           "ZSTD": (10, -4)}
     for c, xv, yv in zip(codecs, xs, ys):
         ax.annotate(c, (xv, yv), textcoords="offset points", xytext=off[c],
                     fontsize=8, color=MUTED)
