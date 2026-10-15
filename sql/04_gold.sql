@@ -1,14 +1,9 @@
--- ============================================================
--- GOLD: витрины для бизнес-аналитики (готовый ответ, без джойнов)
--- ============================================================
+-- Gold: витрины для аналитики
 
 CREATE SCHEMA IF NOT EXISTS gold.mart;
 
--- ------------------------------------------------------------
--- Витрина 1: выручка по регион x сегмент x месяц
--- Бизнес-вопрос: "как растёт выручка по рынкам и сегментам клиентов"
--- Клиент берётся в АКТУАЛЬНОЙ версии (is_current) — смысл SCD Type 2
--- ------------------------------------------------------------
+-- выручка по регионам, сегментам и месяцам
+-- клиент берётся в текущей версии (is_current)
 DROP TABLE IF EXISTS gold.mart.revenue_by_region_segment_month;
 CREATE TABLE gold.mart.revenue_by_region_segment_month
 WITH (format = 'PARQUET') AS
@@ -30,10 +25,7 @@ JOIN silver.core.dim_customer d
   ON f.custkey = d.custkey AND d.is_current
 GROUP BY d.region, d.nation, d.market_segment, f.order_month;
 
--- ------------------------------------------------------------
--- Витрина 2: качество логистики по способу доставки
--- Бизнес-вопрос: "какой перевозчик срывает сроки и чего это стоит"
--- ------------------------------------------------------------
+-- сроки доставки по способу доставки
 DROP TABLE IF EXISTS gold.mart.shipping_performance;
 CREATE TABLE gold.mart.shipping_performance
 WITH (format = 'PARQUET') AS
@@ -50,9 +42,7 @@ SELECT
 FROM silver.core.fct_lineitem
 GROUP BY ship_mode, order_year;
 
--- ------------------------------------------------------------
--- Витрина 3: возвраты по бренду (топ проблемных товаров)
--- ------------------------------------------------------------
+-- возвраты по брендам
 DROP TABLE IF EXISTS gold.mart.returns_by_brand;
 CREATE TABLE gold.mart.returns_by_brand
 WITH (format = 'PARQUET') AS
@@ -66,15 +56,13 @@ FROM silver.core.fct_lineitem
 WHERE brand IS NOT NULL
 GROUP BY brand;
 
--- ------------------------------------------------------------
--- Контроль + демо time travel (Iceberg)
--- ------------------------------------------------------------
+-- проверка
 SELECT region, market_segment, sum(net_revenue) AS net
 FROM gold.mart.revenue_by_region_segment_month
 GROUP BY region, market_segment ORDER BY net DESC LIMIT 10;
 
 SELECT * FROM gold.mart.shipping_performance ORDER BY late_pct DESC LIMIT 10;
 
--- история версий таблицы (time travel): Iceberg хранит снапшоты
+-- снапшоты таблицы клиентов (для time travel)
 SELECT snapshot_id, committed_at, operation
 FROM bronze.raw."customer_hist$snapshots" ORDER BY committed_at;

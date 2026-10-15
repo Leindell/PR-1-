@@ -1,5 +1,5 @@
-# 00_setup.ps1 -- deploy local Lakehouse: MinIO -> Lakekeeper -> Trino
-# ASCII-only on purpose: PowerShell 5.1 reads .ps1 as ANSI, non-ASCII breaks the parser.
+# MinIO -> Lakekeeper -> Trino
+# only english here, powershell 5.1 breaks on cyrillic in .ps1
 $ErrorActionPreference = "Continue"
 
 function Say($m) { Write-Host "`n>>> $m" -ForegroundColor Cyan }
@@ -12,7 +12,7 @@ function Wait-Http($url, $name, $tries = 60) {
             return $true
         } catch { Start-Sleep 3 }
     }
-    Write-Host "    $name FAILED to start in $($tries*3)s -- check docker logs" -ForegroundColor Red
+    Write-Host "    $name FAILED to start in $($tries*3)s, check docker logs" -ForegroundColor Red
     return $false
 }
 
@@ -67,7 +67,7 @@ Say "5/7 Bootstrap + 3 warehouses (bronze/silver/gold)"
 curl.exe -s -o NUL -w "bootstrap: %{http_code}`n" -X POST http://localhost:8181/management/v1/bootstrap -H "Content-Type: application/json" -d '{\"accept-terms-of-use\": true}'
 foreach ($w in @("bronze", "silver", "gold")) {
     $code = curl.exe -s -o NUL -w "%{http_code}" -X POST http://localhost:8181/management/v1/warehouse -H "Content-Type: application/json" -d "@warehouses/$w.json"
-    Write-Host "    warehouse ${w}: HTTP $code -- 201 = created, 409/400 = already exists, both fine"
+    Write-Host "    warehouse ${w}: HTTP $code (201 created, 409/400 already exists)"
 }
 
 Say "6/7 Trino (port 8080), catalogs mounted from .\catalog"

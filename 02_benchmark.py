@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
-"""
-Бенчмарк форматов и кодеков в Iceberg/Trino: 2 формата x 4 кодека.
-
-Что делает:
-  1) создаёт bronze.bench.lineitem_<format>_<codec> из tpch.sf<N>.lineitem,
-     замеряя время записи (wall clock);
-  2) снимает размер данных и метаданных из системных таблиц Iceberg
-     ($files, $manifests);
-  3) для каждой таблицы перезапускает Trino+MinIO (сброс кэшей) и гоняет
-     агрегацию TPC-H Q1 дважды: cold + warm;
-  4) пишет results.csv и results.json.
-
-Запуск:  python 02_benchmark.py                 # всё целиком, sf1
-         python 02_benchmark.py --sf 10         # другой объём
-         python 02_benchmark.py --only-queries  # пропустить создание таблиц
-         python 02_benchmark.py --no-restart     # без сброса кэша (быстро, менее честно)
-"""
+# Бенчмарк: 2 формата (parquet, orc) x 4 кодека, таблица lineitem из tpch.
+# Для каждого варианта: время записи, размер, метаданные, агрегация cold/warm.
+# python 02_benchmark.py [--sf 10] [--only-queries] [--no-restart]
 import argparse
 import csv
 import json
@@ -36,7 +22,7 @@ FORMATS = ["PARQUET", "ORC"]
 CODECS = ["NONE", "SNAPPY", "GZIP", "ZSTD"]
 CONTAINERS = ["trino", "lakehouse-minio"]
 
-# TPC-H Q1 без ORDER BY: полный проход таблицы + свёртка по двум колонкам.
+# похоже на TPC-H Q1, без where и order by
 AGG_SQL = """
 SELECT returnflag, linestatus,
        count(*)                            AS cnt,
@@ -58,7 +44,6 @@ def connect(session_properties=None):
 
 
 def run(sql, session_properties=None, fetch=True):
-    """Выполнить SQL, вернуть (rows, elapsed_sec)."""
     conn = connect(session_properties)
     cur = conn.cursor()
     t0 = time.perf_counter()
@@ -71,22 +56,21 @@ def run(sql, session_properties=None, fetch=True):
 
 
 def wait_trino(timeout=180):
-    """Ждать, пока Trino не ответит starting=false."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(f"http://{HOST}:{PORT}/v1/info", timeout=3) as r:
                 if not json.load(r).get("starting", True):
-                    time.sleep(2)  # дать коннекторам инициализироваться
+                    time.sleep(2)  # каталоги грузятся чуть позже
                     return True
         except (urllib.error.URLError, OSError, ValueError):
             pass
         time.sleep(3)
-    sys.exit("Trino не поднялся — проверь: docker logs trino")
+    sys.exit("Trino не поднялся, см. docker logs trino")
 
 
 def restart_stack():
-    """Сброс кэшей: внутренние кэши Trino + перезапуск MinIO."""
+    # перезапуск, чтобы сбросить кэш перед cold-замером
     print("    [restart] docker restart", " ".join(CONTAINERS), flush=True)
     subprocess.run(["docker", "restart", *CONTAINERS],
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -102,13 +86,12 @@ def fqn(fmt, codec):
 
 
 def create_table(fmt, codec, sf):
-    """CREATE TABLE AS SELECT с заданным форматом/кодеком. Возвращает время записи."""
     t = fqn(fmt, codec)
     props = {f"{CATALOG}.compression_codec": codec}
 
     run(f"DROP TABLE IF EXISTS {t}", fetch=False)
 
-    # Проверяем, что кодек реально применился к сессии, а не молча проигнорирован
+    # проверка, что кодек применился
     chk, _ = run(f"SHOW SESSION LIKE '{CATALOG}.compression_codec'", props)
     actual = chk[0][1] if chk else "?"
     if str(actual).upper() != codec:
@@ -121,7 +104,6 @@ def create_table(fmt, codec, sf):
 
 
 def measure_storage(fmt, codec):
-    """Размер данных и метаданных из системных таблиц Iceberg."""
     tn = table_name(fmt, codec)
     sysname = lambda suffix: f'{CATALOG}.{SCHEMA}."{tn}${suffix}"'
 
@@ -136,7 +118,6 @@ def measure_storage(fmt, codec):
 
 
 def measure_queries(fmt, codec, do_restart):
-    """cold (после сброса кэша) + warm (сразу повторно)."""
     sql = AGG_SQL.format(table=fqn(fmt, codec))
     if do_restart:
         restart_stack()
@@ -188,7 +169,6 @@ def main():
 
         results.append(row)
 
-    # ---------- производные метрики ----------
     baseline = next((r["data_bytes"] for r in results
                      if r["format"] == "PARQUET" and r["codec"] == "NONE"), None)
     for r in results:

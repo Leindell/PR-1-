@@ -1,14 +1,9 @@
--- ============================================================
--- SILVER: очистка + нормализация + обогащение + SCD Type 2
--- Запускать ПОСЛЕ 02_benchmark.py (он создаёт bronze.bench.lineitem_*)
--- ============================================================
+-- Silver: проверка качества, справочник клиентов, очищенный факт продаж
+-- запускать после 02_benchmark.py (берём bronze.bench.lineitem_parquet_zstd)
 
 CREATE SCHEMA IF NOT EXISTS silver.core;
 
--- ------------------------------------------------------------
--- 1. Карантин: сколько строк сырья не проходит контроль качества
---    (считаем ДО очистки, чтобы в отчёте была цифра, а не слова)
--- ------------------------------------------------------------
+-- 1. сколько плохих строк в сырых данных (до фильтрации)
 DROP TABLE IF EXISTS silver.core.dq_report;
 CREATE TABLE silver.core.dq_report
 WITH (format = 'PARQUET') AS
@@ -23,18 +18,15 @@ SELECT
 FROM bronze.bench.lineitem_parquet_zstd l
 LEFT JOIN bronze.raw.orders o ON l.orderkey = o.orderkey;
 
--- ------------------------------------------------------------
--- 2. SCD Type 2: измерение клиента с историей
---    LEAD() закрывает предыдущую версию датой следующей загрузки
--- ------------------------------------------------------------
+-- 2. справочник клиентов, последняя загрузка клиента помечается is_current
 DROP TABLE IF EXISTS silver.core.dim_customer;
 CREATE TABLE silver.core.dim_customer
 WITH (format = 'PARQUET') AS
 SELECT
     c.custkey,
     c.name                                   AS customer_name,
-    upper(trim(c.mktsegment))                AS market_segment,   -- нормализация регистра
-    CAST(c.acctbal AS decimal(12,2))         AS account_balance,  -- нормализация типа
+    upper(trim(c.mktsegment))                AS market_segment,
+    CAST(c.acctbal AS decimal(12,2))         AS account_balance,
     n.name                                   AS nation,
     r.name                                   AS region,
     c.loaded_at                              AS valid_from,
@@ -44,21 +36,17 @@ FROM bronze.raw.customer_hist c
 JOIN bronze.raw.nation n ON c.nationkey = n.nationkey
 JOIN bronze.raw.region r ON n.regionkey = r.regionkey;
 
--- ------------------------------------------------------------
--- 3. Факт продаж: очищенный, нормализованный, обогащённый
--- ------------------------------------------------------------
+-- 3. факт продаж
 DROP TABLE IF EXISTS silver.core.fct_lineitem;
 CREATE TABLE silver.core.fct_lineitem
 WITH (format = 'PARQUET') AS
 SELECT
-    -- ключи
     l.orderkey,
     l.linenumber,
     o.custkey,
     l.partkey,
 
-    -- НОРМАЛИЗАЦИЯ: double -> decimal (деньги не держим во float),
-    -- однобуквенные коды -> читаемые значения, строки -> trim/upper
+    -- деньги в decimal, коды в нормальные значения
     CAST(l.quantity       AS decimal(12,2))                   AS quantity,
     CAST(l.extendedprice  AS decimal(12,2))                   AS gross_amount,
     CAST(l.discount       AS decimal(5,4))                    AS discount_rate,
@@ -70,7 +58,7 @@ SELECT
                        WHEN 'F' THEN 'fulfilled' END          AS line_status,
     upper(trim(l.shipmode))                                   AS ship_mode,
 
-    -- ОБОГАЩЕНИЕ: расчётные метрики
+    -- расчётные поля
     CAST(l.extendedprice * (1 - l.discount)             AS decimal(12,2)) AS net_amount,
     CAST(l.extendedprice * (1 - l.discount) * (1 + l.tax) AS decimal(12,2)) AS net_with_tax,
     CAST(l.extendedprice * l.discount                   AS decimal(12,2)) AS discount_amount,
@@ -78,7 +66,7 @@ SELECT
     date_diff('day', l.commitdate, l.receiptdate)                         AS delay_vs_commit,
     l.receiptdate > l.commitdate                                          AS is_late,
 
-    -- ОБОГАЩЕНИЕ: атрибуты из других таблиц + календарь
+    -- из заказов и товаров
     o.orderdate,
     date_trunc('month', CAST(o.orderdate AS timestamp))        AS order_month,
     year(o.orderdate)                                          AS order_year,
@@ -89,17 +77,15 @@ SELECT
     l.commitdate,
     l.receiptdate
 FROM bronze.bench.lineitem_parquet_zstd l
-JOIN bronze.raw.orders o ON l.orderkey = o.orderkey      -- INNER: сироты отсекаются
+JOIN bronze.raw.orders o ON l.orderkey = o.orderkey      -- строки без заказа отсекаются
 LEFT JOIN bronze.raw.part p ON l.partkey = p.partkey
-WHERE l.quantity      > 0                                -- ОЧИСТКА
+WHERE l.quantity      > 0
   AND l.extendedprice > 0
   AND l.discount BETWEEN 0 AND 1
   AND l.returnflag IN ('A','N','R')
   AND l.shipdate >= o.orderdate;
 
--- ------------------------------------------------------------
--- 4. Контроль
--- ------------------------------------------------------------
+-- проверка
 SELECT * FROM silver.core.dq_report;
 SELECT count(*) AS silver_rows FROM silver.core.fct_lineitem;
 SELECT count(*) AS dim_rows, count_if(is_current) AS current_rows,

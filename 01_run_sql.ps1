@@ -1,6 +1,4 @@
-# 01_run_sql.ps1 -- run a .sql file through the Trino CLI inside the container
-# Usage: .\01_run_sql.ps1 sql\01_bronze.sql
-# ASCII-only on purpose (PowerShell 5.1 ANSI parsing).
+# runs a .sql file in trino container: .\01_run_sql.ps1 sql\01_bronze.sql
 param([Parameter(Mandatory = $true)][string]$File)
 
 if (-not (Test-Path $File)) {

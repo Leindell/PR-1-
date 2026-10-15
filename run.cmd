@@ -31,14 +31,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\01_run_sql.ps1" "sql\04_g
 if errorlevel 1 goto fail
 
 echo.
-echo === ВСЁ ГОТОВО ===
-echo Результат: results.csv  (его отправь Клоду)
+echo Готово
+echo Результаты в results.csv
 goto end
 
 :fail
 echo.
-echo !!! Шаг завершился с ошибкой. Скопируй вывод выше.
-echo Диагностика:  docker ps -a    и    docker logs trino
+echo Ошибка, смотри docker ps -a и docker logs trino
 
 :end
 pause
